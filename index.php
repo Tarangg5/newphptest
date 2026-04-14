@@ -60,16 +60,40 @@ $newSS2Cookie = $ss2Match[0] ?? null;
 preg_match('/manualCookie:\s*"(__hdnea__=[^"]+)"/', $ss2_50fpsHtml, $ss2_50fpsMatch);
 $newSS2_50fpsCookie = $ss2_50fpsMatch[1] ?? null;
 
-// Replace Cookies
-$m3uContent = preg_replace('/(Star Sports 1 Hindi HD 50fps[\s\S]*?#EXTHTTP:\{"Cookie":")__hdnea__=[^"]+("\})/', "$1$newHindiCookie$2", $m3uContent);
-$m3uContent = preg_replace('/(Star Sports 1 HD[\s\S]*?#EXTHTTP:\{"Cookie":")__hdnea__=[^"]+("\})/', "$1$newEnglishCookie$2", $m3uContent);
+// --- Corrected Replacement Logic ---
 
+// 1. Star Sports 1 Hindi HD 50fps
+$m3uContent = preg_replace(
+    '/(Star Sports 1 Hindi HD 50fps[\s\S]*?#EXTHTTP:\{"Cookie":")__hdnea__=[^"]+("\})/',
+    '${1}' . $newHindiCookie . '${2}', 
+    $m3uContent
+);
+
+// 2. Star Sports 1 HD (English)
+$m3uContent = preg_replace(
+    '/(Star Sports 1 HD[\s\S]*?#EXTHTTP:\{"Cookie":")__hdnea__=[^"]+("\})/',
+    '${1}' . $newEnglishCookie . '${2}', 
+    $m3uContent
+);
+
+// 3. Star Sports 2 Hindi HD (Hotstar)
 if ($newSS2Cookie) {
-    $m3uContent = preg_replace('/(Star Sports 2 Hindi HD(?! 50fps)[\s\S]*?#EXTHTTP:\{"Cookie":")hdntl=[^"]+(")/', "$1$newSS2Cookie$3", $m3uContent);
+    $m3uContent = preg_replace(
+        '/(Star Sports 2 Hindi HD(?! 50fps)[\s\S]*?#EXTHTTP:\{"Cookie":")hdntl=[^"]+(")/',
+        '${1}' . $newSS2Cookie . '${3}', 
+        $m3uContent
+    );
 }
+
+// 4. Star Sports 2 Hindi HD 50fps
 if ($newSS2_50fpsCookie) {
-    $m3uContent = preg_replace('/(Star Sports 2 Hindi HD 50fps[\s\S]*?#EXTHTTP:\{"Cookie":")__hdnea__=[^"]+("\})/', "$1$newSS2_50fpsCookie$2", $m3uContent);
+    $m3uContent = preg_replace(
+        '/(Star Sports 2 Hindi HD 50fps[\s\S]*?#EXTHTTP:\{"Cookie":")__hdnea__=[^"]+("\})/',
+        '${1}' . $newSS2_50fpsCookie . '${2}', 
+        $m3uContent
+    );
 }
+
 
 // Zee5 Extraction
 $zeeSection = "\n#--- ZEE5 CHANNELS ---\n";

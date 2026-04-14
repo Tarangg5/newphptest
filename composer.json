@@ -2,6 +2,11 @@
     "name": "railway-php-m3u",
     "description": "PHP script to update M3U cookies",
     "require": {
-        "php": ">=7.4"
+        "php": "*"
+    },
+    "config": {
+        "platform": {
+            "php": "8.2.0"
+        }
     }
 }

@@ -1,27 +1,20 @@
 <?php
-// Errors ko hide karein taaki sirf M3U output dikhe
+// Errors ko hide karein taaki output sirf M3U text ho
 error_reporting(0);
 
-// Target URLs
 $urls = [
     'm3u' => "https://raw.githubusercontent.com/Tarangg5/sports/refs/heads/main/sonur.m3u",
-    'hindiCookie' => "https://allrounder-live2.pages.dev/api/cookie.json",
+    'hindiCookie' => "https://allrounderid2.pages.dev/api/star-1-hindi.json",
     'englishCookie' => "https://allrounder-live2.pages.dev/api/star-1.json",
     'ss2HindiHotstar' => "https://server.lrl45.workers.dev/channel/raw?=m3u",
     'ss2Hindi50fps' => "https://copy-karna-chor-da-bhai.pages.dev/TEMP/SS2H/"
 ];
 
-// Zee5 channels list
-$zeeChannels = [
-    'Zee Cinemalu HD', 'Zee Cinema HD', '&Pictures HD', 'Zee Classic',
-    'Zee Cinemalu', 'Zee Power HD', '&TV HD', '&xplorHD', '&flix HD',
-    'Big Magic', 'Zee Action', 'Anmol Cinema', 'Anmol Cinema 2', 'Zee Cinema'
-];
+$zeeChannels = ['Zee Cinemalu HD', 'Zee Cinema HD', '&Pictures HD', 'Zee Classic', 'Zee Cinemalu', 'Zee Power HD', '&TV HD', '&xplorHD', '&flix HD', 'Big Magic', 'Zee Action', 'Anmol Cinema', 'Anmol Cinema 2', 'Zee Cinema'];
 
-// Parallel Fetching using cURL Multi
+// Parallel Fetching
 $mh = curl_multi_init();
 $handles = [];
-
 foreach ($urls as $key => $url) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -31,82 +24,75 @@ foreach ($urls as $key => $url) {
     curl_multi_add_handle($mh, $ch);
     $handles[$key] = $ch;
 }
-
 $running = null;
-do {
-    curl_multi_exec($mh, $running);
-} while ($running);
+do { curl_multi_exec($mh, $running); } while ($running);
 
-// Responses collect karein
+// Responses ko collect karein
 $m3uContent = curl_multi_getcontent($handles['m3u']);
-$hindiJson = json_decode(curl_multi_getcontent($handles['hindiCookie']), true);
-$englishJson = json_decode(curl_multi_getcontent($handles['englishCookie']), true);
 $ss2M3uRaw = curl_multi_getcontent($handles['ss2HindiHotstar']);
 $ss2_50fpsHtml = curl_multi_getcontent($handles['ss2Hindi50fps']);
 
-foreach ($handles as $ch) {
-    curl_multi_remove_handle($mh, $ch);
-    curl_close($ch);
-}
+// JSON Safety Logic (Cloudflare ki tarah PHP mein safe parsing)
+$hindiRaw = curl_multi_getcontent($handles['hindiCookie']);
+$englishRaw = curl_multi_getcontent($handles['englishCookie']);
+
+$hindiJson = json_decode($hindiRaw, true);
+$englishJson = json_decode($englishRaw, true);
+
+// Agar JSON invalid hai toh empty string set karein
+$newHindi = (is_array($hindiJson) && isset($hindiJson['cookie'])) ? $hindiJson['cookie'] : '';
+$newEnglish = (is_array($englishJson) && isset($englishJson['cookie'])) ? $englishJson['cookie'] : '';
+
+foreach ($handles as $ch) { curl_multi_remove_handle($mh, $ch); curl_close($ch); }
 curl_multi_close($mh);
 
-// --- Cookies Extraction ---
-$newHindi = $hindiJson['cookie'] ?? '';
-$newEnglish = $englishJson['cookie'] ?? '';
-
-// SS2 Cookie (hdntl)
+// SS2 Cookies Extraction
 preg_match('/hdntl=exp=[^"\'}]+/', $ss2M3uRaw, $m1);
 $newSS2 = $m1[0] ?? '';
 
-// SS2 50fps Cookie (__hdnea__)
 preg_match('/manualCookie:\s*"(__hdnea__=[^"]+)"/', $ss2_50fpsHtml, $m2);
 $newSS2_50fps = $m2[1] ?? '';
 
-// --- Super Stable Replacement (Using str_replace to keep JSON safe) ---
+// --- Safe Replacement Logic ---
 
 // 1. Star Sports 1 Hindi HD 50fps
-if ($newHindi) {
+if (!empty($newHindi)) {
     preg_match('/Star Sports 1 Hindi HD 50fps[\s\S]*?#EXTHTTP:\{"Cookie":"([^"]+)"/', $m3uContent, $m);
     if (!empty($m[1])) $m3uContent = str_replace($m[1], $newHindi, $m3uContent);
 }
 
 // 2. Star Sports 1 HD English
-if ($newEnglish) {
+if (!empty($newEnglish)) {
     preg_match('/Star Sports 1 HD[\s\S]*?#EXTHTTP:\{"Cookie":"([^"]+)"/', $m3uContent, $m);
     if (!empty($m[1])) $m3uContent = str_replace($m[1], $newEnglish, $m3uContent);
 }
 
-// 3. Star Sports 2 Hindi HD (Not 50fps)
-if ($newSS2) {
+// 3. Star Sports 2 Hindi HD
+if (!empty($newSS2)) {
     preg_match('/Star Sports 2 Hindi HD(?! 50fps)[\s\S]*?#EXTHTTP:\{"Cookie":"([^"]+)"/', $m3uContent, $m);
     if (!empty($m[1])) $m3uContent = str_replace($m[1], $newSS2, $m3uContent);
 }
 
 // 4. Star Sports 2 Hindi HD 50fps
-if ($newSS2_50fps) {
+if (!empty($newSS2_50fps)) {
     preg_match('/Star Sports 2 Hindi HD 50fps[\s\S]*?#EXTHTTP:\{"Cookie":"([^"]+)"/', $m3uContent, $m);
     if (!empty($m[1])) $m3uContent = str_replace($m[1], $newSS2_50fps, $m3uContent);
 }
 
-// --- Zee5 Extraction Logic ---
+// Zee5 logic
 $zeeSection = "\n#--- ZEE5 CHANNELS ---\n";
 $lines = explode("\n", $ss2M3uRaw);
 for ($i = 0; $i < count($lines); $i++) {
     if (strpos($lines[$i], '#EXTINF') === 0) {
-        $found = false;
         foreach ($zeeChannels as $ch) {
             if (strpos($lines[$i], $ch) !== false) {
-                $found = true;
+                $zeeSection .= $lines[$i]."\n".($lines[$i+1]??"")."\n".($lines[$i+2]??"")."\n".($lines[$i+3]??"")."\n\n";
                 break;
             }
-        }
-        if ($found) {
-            $zeeSection .= $lines[$i] . "\n" . ($lines[$i+1] ?? "") . "\n" . ($lines[$i+2] ?? "") . "\n" . ($lines[$i+3] ?? "") . "\n\n";
         }
     }
 }
 
-// Final Output
 header('Content-Type: text/plain; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 echo $m3uContent . $zeeSection;

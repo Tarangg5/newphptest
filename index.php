@@ -1,7 +1,8 @@
 <?php
 // Errors ko hide karein taaki output sirf M3U text ho
-error_reporting(0);
-
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 $urls = [
     'm3u' => "https://raw.githubusercontent.com/Tarangg5/sports/refs/heads/main/sonur.m3u",
     'hindiCookie' => "https://allrounderid2.pages.dev/api/star-1-hindi.json",

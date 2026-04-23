@@ -4,17 +4,7 @@
 header('Content-Type: text/plain; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 
-$cacheFile = "playlist.m3u"; // Is file mein data save hoga
-$cacheTime = 7200; // 2 ghante tak fetch nahi karega, wahi file dikhayega
-
-// 1. Check karein ki kya fresh cache file maujood hai
-if (file_exists($cacheFile) && (time() - file_mtime($cacheFile) < $cacheTime)) {
-    echo file_get_contents($cacheFile);
-    exit;
-}
-
-// --- Agar cache purani hai, tabhi niche ka logic chalega ---
-
+// Main JSON Source
 $pastefyUrl = "https://pastefy.app/ZH3tseJk/raw";
 
 function fetchAllChannels($urls) {
@@ -51,6 +41,7 @@ function fetchAllChannels($urls) {
 }
 
 try {
+    // 1. Pastefy se list fetch karein
     $ch = curl_init($pastefyUrl);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -59,21 +50,25 @@ try {
 
     $channels = json_decode($jsonRaw, true);
     if (!$channels) {
-        die("#EXTM3U\n# Error: Could not parse JSON");
+        die("#EXTM3U\n# Error: Could not parse JSON from Pastefy");
     }
 
+    // 2. Saare links ki list banayein parallel fetch ke liye
     $linksToFetch = [];
     foreach ($channels as $index => $chInfo) {
         $linksToFetch[$index] = $chInfo['link'];
     }
 
+    // 3. Ek saath saare channel pages fetch karein
     $pageContents = fetchAllChannels($linksToFetch);
 
-    $m3uContent = "#EXTM3U\n\n";
+    echo "#EXTM3U\n\n";
 
+    // 4. Data Extract aur M3U Format generate karein
     foreach ($channels as $index => $chInfo) {
         $html = $pageContents[$index];
 
+        // SERVER_CONFIG nikalne ke liye regex
         if (preg_match('/const SERVER_CONFIG\s*=\s*({.*?});/s', $html, $matches)) {
             $config = json_decode($matches[1], true);
 
@@ -83,22 +78,17 @@ try {
                 $keyId     = $config['keyId'];
                 $key       = $config['key'];
 
-                $m3uContent .= "#EXTINF:-1 tvg-id=\"{$chInfo['id']}\" tvg-name=\"{$chInfo['name']}\" tvg-logo=\"{$chInfo['logo']}\" group-title=\"{$chInfo['group']}\",{$chInfo['name']}\n";
-                $m3uContent .= "#KODIPROP:inputstream.adaptive.license_type=clearkey\n";
-                $m3uContent .= "#KODIPROP:inputstream.adaptive.license_key={$keyId}:{$key}\n";
-                $m3uContent .= "#EXTHTTP:{\"Cookie\":\"{$cookie}\"}\n";
-                $m3uContent .= "{$streamUrl}\n\n";
+                echo "#EXTINF:-1 tvg-id=\"{$chInfo['id']}\" tvg-name=\"{$chInfo['name']}\" tvg-logo=\"{$chInfo['logo']}\" group-title=\"{$chInfo['group']}\",{$chInfo['name']}\n";
+                echo "#KODIPROP:inputstream.adaptive.license_type=clearkey\n";
+                echo "#KODIPROP:inputstream.adaptive.license_key={$keyId}:{$key}\n";
+                echo "#EXTHTTP:{\"Cookie\":\"{$cookie}\"}\n";
+                echo "{$streamUrl}\n\n";
             }
         }
     }
 
-    // Naya data file mein save kar dein
-    file_put_contents($cacheFile, $m3uContent);
-    
-    // Result dikhayein
-    echo $m3uContent;
-
 } catch (Exception $e) {
     echo "# Error: " . $e->getMessage();
 }
+
 ?>

@@ -1,4 +1,8 @@
 <?php
+<?php
+set_time_limit(60); // Script ko 60 second tak chalne ki permission dein
+ini_set('memory_limit', '512M'); 
+// ... baki code
 
 // Headers for M3U output
 header('Content-Type: text/plain; charset=utf-8');

@@ -1,11 +1,19 @@
 <?php
+// Output buffering disable karna taaki data turant dikhe
+if (ob_get_level()) ob_end_clean();
 header('Content-Type: text/plain; charset=utf-8');
-set_time_limit(0); // Script ko rukne na de
+header('X-Accel-Buffering: no'); // Nginx ke liye
+
+set_time_limit(0); // Script limit hatane ki koshish
+ignore_user_abort(true);
 
 $channelsUrl = "https://allinonereborn.online/tplay/channels.json";
 $playBaseUrl = "https://allinonereborn.online/tplay/play.php?id=";
 
-// 1. Channels JSON fetch karein
+echo "#EXTM3U\n\n";
+flush(); // Turant header bhej do
+
+// 1. All Channels Fetch
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $channelsUrl);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -13,41 +21,38 @@ curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) S
 $jsonData = curl_exec($ch);
 curl_close($ch);
 
-$channels = json_decode($jsonData, true);
-if (!$channels) {
-    die("Error: JSON data nahi mila.");
-}
+$allChannels = json_decode($jsonData, true);
+if (!$allChannels) exit;
 
-echo "#EXTM3U\n\n";
-
-// Multi-curl setup (Ek saath requests bhejne ke liye)
-$batch_size = 20; // Ek baar mein 20 channels process honge
-$chunks = array_chunk($channels, $batch_size);
+// Ek batch mein kitne requests (Speed badhane ke liye)
+$batch_size = 15; 
+$chunks = array_chunk($allChannels, $batch_size);
 
 foreach ($chunks as $chunk) {
     $mh = curl_multi_init();
-    $curl_array = array();
+    $curl_handles = [];
 
     foreach ($chunk as $channel) {
         $id = $channel['id'];
-        $url = $playBaseUrl . $id;
-        $curl_array[$id] = curl_init($url);
-        curl_setopt($curl_array[$id], CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($curl_array[$id], CURLOPT_USERAGENT, "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36");
-        curl_setopt($curl_array[$id], CURLOPT_TIMEOUT, 10);
-        curl_multi_add_handle($mh, $curl_array[$id]);
+        $ch_h = curl_init($playBaseUrl . $id);
+        curl_setopt($ch_h, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch_h, CURLOPT_USERAGENT, "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36");
+        curl_setopt($ch_h, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch_h, CURLOPT_FOLLOWLOCATION, true);
+        
+        $curl_handles[$id] = $ch_h;
+        curl_multi_add_handle($mh, $ch_h);
     }
 
-    // Requests execute karein
     $running = null;
     do {
         curl_multi_exec($mh, $running);
+        usleep(100); // CPU usage kam rakhne ke liye
     } while ($running > 0);
 
-    // Response process karein
     foreach ($chunk as $channel) {
         $id = $channel['id'];
-        $html = curl_multi_getcontent($curl_array[$id]);
+        $html = curl_multi_getcontent($curl_handles[$id]);
         
         if ($html) {
             preg_match('/mpd\s*:\s*["\'](.*?)["\']/', $html, $mpd);
@@ -62,12 +67,12 @@ foreach ($chunks as $chunk) {
                 echo "{$mpd[1]}\n\n";
             }
         }
-        curl_multi_remove_handle($mh, $curl_array[$id]);
-        curl_close($curl_array[$id]);
+        curl_multi_remove_handle($mh, $curl_handles[$id]);
+        curl_close($curl_handles[$id]);
     }
     curl_multi_close($mh);
     
-    // Server load kam karne ke liye halka sa gap
-    usleep(50000); 
+    // Sabse important: Har batch ke baad buffer flush karo
+    // Isse server ko lagega ki kaam chal raha hai aur timeout nahi dega
+    flush(); 
 }
-?>

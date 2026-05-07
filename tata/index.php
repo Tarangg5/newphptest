@@ -1,7 +1,9 @@
 <?php
 // Script ko timeout hone se bachane ke liye limit hatana
 header('Content-Type: text/plain; charset=utf-8');
-set_time_limit(0); 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
 $channelsUrl = "https://allinonereborn.online/tplay/channels.json";
 $playBaseUrl = "https://allinonereborn.online/tplay/play.php?id=";

@@ -4,7 +4,7 @@ if (ob_get_level()) ob_end_clean();
 header('Content-Type: text/plain; charset=utf-8');
 header('X-Accel-Buffering: no'); // Nginx ke liye
 
-set_time_limit(0); // Script limit hatane ki koshish
+// Script limit hatane ki koshish
 ignore_user_abort(true);
 
 $channelsUrl = "https://allinonereborn.online/tplay/channels.json";

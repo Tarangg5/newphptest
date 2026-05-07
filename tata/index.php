@@ -1,68 +1,73 @@
 <?php
-// Script ko timeout hone se bachane ke liye limit hatana
 header('Content-Type: text/plain; charset=utf-8');
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+set_time_limit(0); // Script ko rukne na de
 
 $channelsUrl = "https://allinonereborn.online/tplay/channels.json";
 $playBaseUrl = "https://allinonereborn.online/tplay/play.php?id=";
 
-// Browser jaisa User-Agent
-$options = [
-    "http" => [
-        "header" => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n"
-    ]
-];
-$context = stream_context_create($options);
+// 1. Channels JSON fetch karein
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, $channelsUrl);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Safari/537.36");
+$jsonData = curl_exec($ch);
+curl_close($ch);
 
-try {
-    // 1. Saare channels ki list load karein
-    $jsonData = file_get_contents($channelsUrl, false, $context);
-    if ($jsonData === false) {
-        die("Error: Channels JSON load nahi ho raha.");
+$channels = json_decode($jsonData, true);
+if (!$channels) {
+    die("Error: JSON data nahi mila.");
+}
+
+echo "#EXTM3U\n\n";
+
+// Multi-curl setup (Ek saath requests bhejne ke liye)
+$batch_size = 20; // Ek baar mein 20 channels process honge
+$chunks = array_chunk($channels, $batch_size);
+
+foreach ($chunks as $chunk) {
+    $mh = curl_multi_init();
+    $curl_array = array();
+
+    foreach ($chunk as $channel) {
+        $id = $channel['id'];
+        $url = $playBaseUrl . $id;
+        $curl_array[$id] = curl_init($url);
+        curl_setopt($curl_array[$id], CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl_array[$id], CURLOPT_USERAGENT, "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36");
+        curl_setopt($curl_array[$id], CURLOPT_TIMEOUT, 10);
+        curl_multi_add_handle($mh, $curl_array[$id]);
     }
 
-    $channels = json_decode($jsonData, true);
+    // Requests execute karein
+    $running = null;
+    do {
+        curl_multi_exec($mh, $running);
+    } while ($running > 0);
 
-    echo "#EXTM3U\n\n";
-
-    foreach ($channels as $channel) {
+    // Response process karein
+    foreach ($chunk as $channel) {
         $id = $channel['id'];
-        $name = $channel['name'];
-        $logo = $channel['logo'];
-        $category = $channel['category'];
+        $html = curl_multi_getcontent($curl_array[$id]);
+        
+        if ($html) {
+            preg_match('/mpd\s*:\s*["\'](.*?)["\']/', $html, $mpd);
+            preg_match('/token\s*:\s*["\'](.*?)["\']/', $html, $token);
+            preg_match('/drm\s*:\s*\{\s*["\'](.*?)["\']\s*:\s*["\'](.*?)["\']\s*\}/', $html, $drm);
 
-        // 2. Har ID ka play page fetch karein
-        $playHtml = file_get_contents($playBaseUrl . $id, false, $context);
-
-        if ($playHtml) {
-            // MPD Link Extract karein
-            preg_match('/mpd\s*:\s*["\'](.*?)["\']/', $playHtml, $mpdMatch);
-            // Token Extract karein
-            preg_match('/token\s*:\s*["\'](.*?)["\']/', $playHtml, $tokenMatch);
-            // DRM Keys Extract karein
-            preg_match('/drm\s*:\s*\{\s*["\'](.*?)["\']\s*:\s*["\'](.*?)["\']\s*\}/', $playHtml, $drmMatch);
-
-            if (!empty($mpdMatch[1]) && !empty($tokenMatch[1]) && !empty($drmMatch[1])) {
-                $mpd = $mpdMatch[1];
-                $token = $tokenMatch[1];
-                $keyId = $drmMatch[1];
-                $keyVal = $drmMatch[2];
-
-                // M3U Entry Format
-                echo "#EXTINF:-1 tvg-id=\"$id\" tvg-name=\"$name\" tvg-logo=\"$logo\" group-title=\"$category\",$name\n";
+            if (!empty($mpd[1]) && !empty($token[1]) && !empty($drm[1])) {
+                echo "#EXTINF:-1 tvg-id=\"{$id}\" tvg-name=\"{$channel['name']}\" tvg-logo=\"{$channel['logo']}\" group-title=\"{$channel['category']}\",{$channel['name']}\n";
                 echo "#KODIPROP:inputstream.adaptive.license_type=clearkey\n";
-                echo "#KODIPROP:inputstream.adaptive.license_key=$keyId:$keyVal\n";
-                echo "#EXTHTTP:{\"Cookie\":\"$token\",\"Referer\":\"https://www.tataplaybinge.com/\",\"User-Agent\":\"Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"}\n";
-                echo "$mpd\n\n";
+                echo "#KODIPROP:inputstream.adaptive.license_key={$drm[1]}:{$drm[2]}\n";
+                echo "#EXTHTTP:{\"Cookie\":\"{$token[1]}\",\"Referer\":\"https://www.tataplaybinge.com/\",\"User-Agent\":\"Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36\"}\n";
+                echo "{$mpd[1]}\n\n";
             }
         }
-        // Thoda break taaki server block na kare (Optional)
-        // usleep(100000); 
+        curl_multi_remove_handle($mh, $curl_array[$id]);
+        curl_close($curl_array[$id]);
     }
-
-} catch (Exception $e) {
-    echo "Error: " . $e->getMessage();
+    curl_multi_close($mh);
+    
+    // Server load kam karne ke liye halka sa gap
+    usleep(50000); 
 }
 ?>

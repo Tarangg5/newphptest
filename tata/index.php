@@ -2,7 +2,7 @@
 // Script execution time badhane ki koshish
 
 
-header('Content-Type: text/plain; charset=utf-8');
+
 
 $channelsUrl = "https://allinonereborn.online/tplay/channels.json";
 $playBaseUrl = "https://allinonereborn.online/tplay/play.php?id=";

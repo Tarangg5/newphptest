@@ -11,8 +11,8 @@ if (strlen($searchQuery) < 3) {
 }
 
 $host = "http://datahub11.com";
-$username = "Anthony2";
-$password = "Anthony123";
+$username = "0AEHQ64ukI";
+$password = "50yxz17DyG";
 
 $action = 'get_live_streams';
 if ($type === 'vod') $action = 'get_vod_streams';
